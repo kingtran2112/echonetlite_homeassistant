@@ -3,7 +3,7 @@
 # Air-cleaner models whose F1/F2/F3 payloads have been verified byte for byte
 # against the physical device. Adding a model here is only correct once its
 # readback has been confirmed; the layout is not assumed from the model name.
-SHARP_AIR_CLEANER_MODELS = frozenset({"FPS42Y", "FXS120V"})
+SHARP_AIR_CLEANER_MODELS = frozenset({"FPJ80EV", "FPS42Y", "FXS120V"})
 
 SHARP_MODES = {
     "auto": 0x20,

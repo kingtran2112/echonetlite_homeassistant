@@ -46,6 +46,17 @@ FXS120V_READBACK = {
     0xF3: bytes.fromhex("0000000020000000c000000000ff000000000000000000000000f0"),
 }
 
+# Verbatim readback from a physical FP-J80EV (SHARP AIR app).
+FPJ80EV_READBACK = {
+    0xF1: bytes.fromhex(
+        "6005001c44062700f20000001aa8a700780000000000233698000000470146000000000000000000"
+    ),
+    0xF2: bytes.fromhex(
+        "0c00000000000000000000000000000019320000000000000000002001000000000000000000ff00"
+    ),
+    0xF3: bytes.fromhex("00000000201400000000000000ff00000000000000000000000000"),
+}
+
 
 class Wire:
     """Device responses through the actual pychonet encoder and receiver."""
@@ -599,6 +610,17 @@ def test_real_fxs120v_readback_decodes_every_field():
     assert sharp_value(FXS120V_READBACK, "led") is True
     assert sharp_value(FXS120V_READBACK, "child-lock") is False
     assert sharp_value(FXS120V_READBACK, "plasmacluster") is True
+
+
+def test_real_fpj80ev_readback_decodes_every_field():
+    """Regression against verbatim bytes from a physical FP-J80EV."""
+    assert sharp_value(FPJ80EV_READBACK, "temperature") == 28
+    assert sharp_value(FPJ80EV_READBACK, "humidity") == 68
+    assert sharp_value(FPJ80EV_READBACK, "pm25") == 71
+    assert sharp_value(FPJ80EV_READBACK, "mode") == "auto"
+    assert sharp_value(FPJ80EV_READBACK, "led") is False
+    assert sharp_value(FPJ80EV_READBACK, "child-lock") is False
+    assert sharp_value(FPJ80EV_READBACK, "plasmacluster") is False
 
 
 @pytest.mark.parametrize("model", sorted(SHARP_AIR_CLEANER_MODELS))
