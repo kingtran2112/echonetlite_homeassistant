@@ -5,6 +5,7 @@ import logging
 from homeassistant.const import CONF_ICON, CONF_SERVICE_DATA, CONF_NAME
 from homeassistant.components.switch import SwitchEntity
 from .base_entity import EchonetEntity
+from .sharp import SHARP_SWITCH_KEYS
 from .sharp_entity import SharpFieldEntity
 from . import get_name_by_epc_code
 from .const import (
@@ -50,10 +51,10 @@ async def async_setup_entry(hass, config, async_add_entities, discovery_info=Non
     """Set up the ECHONETLite switch platform."""
     entities = []
     for entity in hass.data[DOMAIN][config.entry_id]:
-        if entity["echonetlite"].sharp_controls_available:
+        if entity["echonetlite"].sharp_switches_available:
             entities.extend(
                 SharpSwitch(entity["echonetlite"], config, key)
-                for key in ("led", "child-lock")
+                for key in SHARP_SWITCH_KEYS
             )
         eojgc = entity["instance"]["eojgc"]
         eojcc = entity["instance"]["eojcc"]

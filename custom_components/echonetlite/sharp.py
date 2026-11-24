@@ -5,6 +5,12 @@
 # readback has been confirmed; the layout is not assumed from the model name.
 SHARP_AIR_CLEANER_MODELS = frozenset({"FPJ80EV", "FPS42Y", "FXS120V"})
 
+SHARP_SWITCH_KEYS = ("led", "child-lock")
+# FP-J80EV acknowledges the FP-S42Y LED and child-lock commands but never
+# reports either in F3: its child lock is F2[38] and its LED has three
+# levels. Its switches stay hidden until a working command is proven.
+SHARP_MODELS_WITHOUT_SWITCHES = frozenset({"FPJ80EV"})
+
 SHARP_MODES = {
     "auto": 0x20,
     "low": 0x14,
@@ -84,7 +90,7 @@ def sharp_command(key, value):
     if key == "mode" and value in SHARP_MODES:
         payload[:4] = bytes.fromhex("01010000")
         payload[4] = SHARP_MODES[value]
-    elif key in ("led", "child-lock") and type(value) is bool:
+    elif key in SHARP_SWITCH_KEYS and type(value) is bool:
         mask, offset, on = {
             "led": ("00004000", 26, 0xF0),
             "child-lock": ("00400000", 18, 0xFF),

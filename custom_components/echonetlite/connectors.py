@@ -36,6 +36,8 @@ from .const import (
 from .config_flow import ErrorConnect
 from .sharp import (
     SHARP_AIR_CLEANER_MODELS,
+    SHARP_MODELS_WITHOUT_SWITCHES,
+    SHARP_SWITCH_KEYS,
     sharp_command,
     sharp_raw,
     sharp_value,
@@ -401,6 +403,14 @@ class ECHONETConnector(DataUpdateCoordinator[dict]):
             and 0xF3 in self._setPropertyMap
         )
 
+    @property
+    def sharp_switches_available(self) -> bool:
+        """Whether the LED and child-lock commands are proven on this model."""
+        return (
+            self.sharp_controls_available
+            and self._object_product_code not in SHARP_MODELS_WITHOUT_SWITCHES
+        )
+
     async def async_set_sharp_fan_mode(self, option: str) -> None:
         """Set a calibrated preset; actual F3 (not A0) distinguishes the modes."""
         await self.async_set_sharp_setting("mode", option)
@@ -409,6 +419,8 @@ class ECHONETConnector(DataUpdateCoordinator[dict]):
         """Write only validated fields and publish actual GET, never ACK state."""
         if not self.sharp_controls_available:
             raise HomeAssistantError("Unsupported Sharp appliance")
+        if key in SHARP_SWITCH_KEYS and not self.sharp_switches_available:
+            raise HomeAssistantError("Unsupported Sharp setting")
         try:
             payload = sharp_command(key, value)
         except (ValueError, TypeError) as err:

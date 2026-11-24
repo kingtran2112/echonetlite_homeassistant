@@ -1,7 +1,7 @@
-"""Sharp FP-J80EV air cleaner properties, checked against device readback.
+"""Sharp FP-J80EV air cleaner properties, verified against device readback.
 
-Same layout as the FP-S42Y: F1/F2 are 40 bytes, F3 is 27, and the auto
-mode code matches. Comparison with the SHARP AIR app is still pending."""
+F1/F2 are 40 bytes and F3 is 27, as on the FP-S42Y. Sensor values match
+the SHARP AIR app. F3 does not report the LED or child lock on this model."""
 
 from pychonet.lib.epc_functions import _int
 

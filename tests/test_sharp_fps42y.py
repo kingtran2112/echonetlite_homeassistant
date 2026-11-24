@@ -26,7 +26,9 @@ from custom_components.echonetlite.select import EchonetSelect
 from custom_components.echonetlite.sharp import (
     SHARP_AIR_CLEANER_MODELS,
     SHARP_FIELDS,
+    SHARP_MODELS_WITHOUT_SWITCHES,
     SHARP_MODES,
+    SHARP_SWITCH_KEYS,
     sharp_field,
     sharp_value,
 )
@@ -46,7 +48,8 @@ FXS120V_READBACK = {
     0xF3: bytes.fromhex("0000000020000000c000000000ff000000000000000000000000f0"),
 }
 
-# Verbatim readback from a physical FP-J80EV (SHARP AIR app).
+# Verbatim readback from a physical FP-J80EV (SHARP AIR app). Its F3 never
+# reflects the LED or child lock, so only F1 sensors and F3 mode are asserted.
 FPJ80EV_READBACK = {
     0xF1: bytes.fromhex(
         "6005001c44062700f20000001aa8a700780000000000233698000000470146000000000000000000"
@@ -281,6 +284,8 @@ async def test_switch_commands_preserve_mode(device, key, mask, offset, on, requ
     make, wire, _, _, _ = device
     c = make()
     await c.startup()
+    if wire.model_name in SHARP_MODELS_WITHOUT_SWITCHES:
+        pytest.skip("model has no switches")
     wire.mode = 0x16
     wire.frames.clear()
     await c.async_set_sharp_setting(key, requested)
@@ -364,6 +369,53 @@ async def test_command_send_timeout_is_not_reported_as_verification(device):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("model", sorted(SHARP_MODELS_WITHOUT_SWITCHES))
+@pytest.mark.parametrize("key", SHARP_SWITCH_KEYS)
+@pytest.mark.parametrize("requested", [True, False])
+async def test_models_without_switches_never_send_switch_commands(
+    tmp_path, model, key, requested
+):
+    """FP-J80EV ACKs the FP-S42Y switch commands but never applies them."""
+    wire = Wire(model)
+    api = ECHONETAPIClient(wire)
+    api._logger = lambda *args: None
+    hass = HomeAssistant(str(tmp_path))
+    hass.data["echonetlite"] = {"api": api}
+    config = SimpleNamespace(title="Synthetic air cleaner", options={}, entry_id="t")
+    api._state[HOST] = {
+        "available": True,
+        "product_code": "HW-B01_GL",
+        "instances": {1: {0x35: {1: {0x80: b"\x30", 0xA0: b"\x41"}}}},
+    }
+    getmap, setmap = [0x80, 0xA0, 0x8C, 0xF1, 0xF2, 0xF3], [0x80, 0xA0, 0xF3]
+    api._state[HOST]["instances"][1][0x35][1].update({0x9F: getmap, 0x9E: setmap})
+    c = ECHONETConnector(
+        dict(
+            host=HOST,
+            uid="synthetic-node-1",
+            uidi="synthetic-object-1",
+            eojgc=1,
+            eojcc=0x35,
+            eojci=1,
+            manufacturer="Sharp",
+            host_product_code="HW-B01_GL",
+            ntfmap=[0x80, 0xF3],
+            getmap=getmap,
+            setmap=setmap,
+        ),
+        hass,
+        config,
+    )
+    await c.startup()
+    assert c.sharp_controls_available and not c.sharp_switches_available
+    wire.frames.clear()
+    with pytest.raises(HomeAssistantError, match="Unsupported Sharp setting"):
+        await c.async_set_sharp_setting(key, requested)
+    assert wire.frames == []
+    await hass.async_stop()
+
+
+@pytest.mark.asyncio
 async def test_capability_gate_is_shared_by_every_platform(device):
     make, _, _, _, _ = device
     c = make()
@@ -408,14 +460,18 @@ async def test_real_entities_share_coordinator_and_reject_invalid_data(device):
     await c.startup()
     c.data = await c._instance.update([0xF1, 0xF2, 0xF3])
     c.last_update_success = True
-    for key, cls, expected in [
+    fields = [
         ("temperature", sensor.SharpSensor, 30),
         ("humidity", sensor.SharpSensor, 43),
         ("pm25", sensor.SharpSensor, 18),
         ("plasmacluster", binary_sensor.SharpPlasmacluster, True),
-        ("led", switch.SharpSwitch, True),
-        ("child-lock", switch.SharpSwitch, False),
-    ]:
+    ]
+    if c.sharp_switches_available:
+        fields += [
+            ("led", switch.SharpSwitch, True),
+            ("child-lock", switch.SharpSwitch, False),
+        ]
+    for key, cls, expected in fields:
         entity = cls(c, config, key)
         assert entity.unique_id == f"synthetic-object-1-sharp-{key}"
         assert entity.available and entity.sharp_state == expected
@@ -528,10 +584,11 @@ def test_binary_values_and_set_payload_are_not_inferred(
 async def test_platform_registration_and_property_map_gates(device, monkeypatch):
     from unittest.mock import MagicMock
 
-    make, _, _, hass, config = device
+    make, wire, _, hass, config = device
     c = make()
     await c.startup()
     c.data = await c._instance.update([0xF1, 0xF2, 0xF3])
+    switch_count = 0 if wire.model_name in SHARP_MODELS_WITHOUT_SWITCHES else 2
     hass.data["echonetlite"][config.entry_id] = [
         {"echonetlite": c, "instance": c._instance_data}
     ]
@@ -541,7 +598,7 @@ async def test_platform_registration_and_property_map_gates(device, monkeypatch)
     for platform, cls, count in [
         (sensor, sensor.SharpSensor, 3),
         (binary_sensor, binary_sensor.SharpPlasmacluster, 1),
-        (switch, switch.SharpSwitch, 2),
+        (switch, switch.SharpSwitch, switch_count),
     ]:
         added = []
         await platform.async_setup_entry(
@@ -618,8 +675,6 @@ def test_real_fpj80ev_readback_decodes_every_field():
     assert sharp_value(FPJ80EV_READBACK, "humidity") == 68
     assert sharp_value(FPJ80EV_READBACK, "pm25") == 71
     assert sharp_value(FPJ80EV_READBACK, "mode") == "auto"
-    assert sharp_value(FPJ80EV_READBACK, "led") is False
-    assert sharp_value(FPJ80EV_READBACK, "child-lock") is False
     assert sharp_value(FPJ80EV_READBACK, "plasmacluster") is False
 
 
